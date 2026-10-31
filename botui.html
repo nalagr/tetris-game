@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tetris Bot Controller</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: monospace; }
+    body { background: #111827; color: #f3f4f6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    h1 { margin-bottom: 16px; color: #38bdf8; font-size: 24px; }
+    .card { background: #1f2937; padding: 24px; border-radius: 8px; width: 420px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    label { font-size: 13px; color: #9ca3af; display: block; margin-bottom: 8px; }
+    input[type="text"] { width: 100%; padding: 10px; background: #111827; border: 1px solid #374151; border-radius: 4px; color: #f3f4f6; font-size: 14px; margin-bottom: 16px; }
+    .actions { display: flex; gap: 12px; }
+    button { flex: 1; padding: 10px; font-weight: bold; border-radius: 4px; border: none; cursor: pointer; transition: opacity 0.2s; }
+    button:hover { opacity: 0.9; }
+    .btn-start { background: #059669; color: #fff; }
+    .btn-stop { background: #dc2626; color: #fff; }
+    .links { margin-top: 20px; font-size: 13px; text-align: center; }
+    a { color: #38bdf8; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    #msg { margin-top: 12px; font-size: 12px; text-align: center; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <h1>Tetris Bot Manager</h1>
+  <div class="card">
+    <label for="serverUrl">Target WebSocket Server:</label>
+    <input type="text" id="serverUrl" value="ws://127.0.0.1:10340/ws">
+    <div class="actions">
+      <button class="btn-start" onclick="startBot()">Connect Bot</button>
+      <button class="btn-stop" onclick="stopBot()">Stop All</button>
+    </div>
+    <div id="msg"></div>
+    <div class="links">
+      <p>Watch live game at: <a href="http://127.0.0.1:10340/watch" target="_blank">http://127.0.0.1:10340/watch</a></p>
+    </div>
+  </div>
+
+  <script>
+    async function startBot() {
+      const url = document.getElementById('serverUrl').value.trim();
+      const msg = document.getElementById('msg');
+      try {
+        const res = await fetch('/server', { method: 'POST', body: url });
+        if (res.ok) {
+          msg.style.color = '#34d399';
+          msg.textContent = 'Bot started connecting to ' + url;
+        } else {
+          msg.style.color = '#f87171';
+          msg.textContent = 'Error starting bot: ' + res.statusText;
+        }
+      } catch (err) {
+        msg.style.color = '#f87171';
+        msg.textContent = 'Network error: ' + err.message;
+      }
+    }
+
+    async function stopBot() {
+      const msg = document.getElementById('msg');
+      try {
+        const res = await fetch('/stopall');
+        if (res.ok) {
+          msg.style.color = '#fbbf24';
+          msg.textContent = 'Stopped all bot tasks';
+        }
+      } catch (err) {
+        msg.style.color = '#f87171';
+        msg.textContent = 'Network error: ' + err.message;
+      }
+    }
+  </script>
+</body>
+</html>

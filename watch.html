@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tetris Spectator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: monospace; }
+    body { background: #111827; color: #f3f4f6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    h1 { margin-bottom: 8px; color: #38bdf8; font-size: 24px; }
+    .status-bar { margin-bottom: 16px; font-size: 14px; color: #9ca3af; display: flex; gap: 16px; align-items: center; }
+    .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; background: #374151; }
+    .status-badge.live { background: #059669; color: #ecfdf5; }
+    .status-badge.waiting { background: #b45309; color: #fffbeb; }
+    .container { display: flex; gap: 24px; background: #1f2937; padding: 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    canvas { background: #030712; border: 2px solid #374151; border-radius: 4px; }
+    .sidebar { display: flex; flex-direction: column; gap: 16px; width: 140px; }
+    .box { background: #111827; border: 1px solid #374151; border-radius: 4px; padding: 12px; text-align: center; }
+    .box-title { font-size: 12px; color: #9ca3af; margin-bottom: 8px; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <h1>Tetris Spectator (/watch)</h1>
+  <div class="status-bar">
+    <span>Status: <span id="status" class="status-badge waiting">Connecting...</span></span>
+    <span>Watching Game: <span id="game-id" style="color:#f3f4f6;">None</span></span>
+  </div>
+
+  <div class="container">
+    <canvas id="board" width="240" height="480"></canvas>
+    <div class="sidebar">
+      <div class="box">
+        <div class="box-title">Next</div>
+        <canvas id="next" width="100" height="100"></canvas>
+      </div>
+      <div class="box">
+        <div class="box-title">Controls</div>
+        <div style="font-size: 11px; color:#9ca3af; line-height: 1.4;">
+          Spectating live feed from <code style="color:#38bdf8;">/snoop</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TETROMINOS = {
+      1: {0: [[0,0],[1,0],[0,-1],[1,-1]]},
+      2: {0: [[0,0],[0,-1],[0,-2],[0,-3]], 1: [[-1,0],[0,0],[1,0],[2,0]]},
+      3: {0: [[-1,-1],[0,-1],[1,-1],[0,0]], 1: [[-1,-1],[0,-1],[0,-2],[0,0]], 2: [[-1,0],[0,0],[1,0],[0,-1]], 3: [[0,0],[0,-1],[0,-2],[1,-1]]},
+      4: {0: [[0,-2],[0,-1],[0,0],[1,0]], 1: [[0,0],[0,-1],[1,-1],[2,-1]], 2: [[-1,-2],[0,-2],[0,-1],[0,0]], 3: [[-1,0],[0,0],[1,0],[1,-1]]},
+      5: {0: [[-1,0],[0,0],[0,-1],[0,-2]], 1: [[0,-1],[0,0],[1,0],[2,0]], 2: [[0,0],[0,-1],[0,-2],[1,-2]], 3: [[-1,-1],[0,-1],[1,-1],[1,0]]},
+      6: {0: [[0,-2],[0,-1],[1,-1],[1,0]], 1: [[-1,0],[0,0],[0,-1],[1,-1]]},
+      7: {0: [[1,-2],[1,-1],[0,-1],[0,0]], 1: [[-1,-1],[0,-1],[0,0],[1,0]]}
+    };
+
+    const COLORS = {
+      1: '#eab308', // O yellow
+      2: '#06b6d4', // I cyan
+      3: '#a855f7', // T purple
+      4: '#f97316', // L orange
+      5: '#3b82f6', // J blue
+      6: '#22c55e', // S green
+      7: '#ef4444'  // Z red
+    };
+
+    const boardCanvas = document.getElementById('board');
+    const bctx = boardCanvas.getContext('2d');
+    const nextCanvas = document.getElementById('next');
+    const nctx = nextCanvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const gameIdEl = document.getElementById('game-id');
+
+    let board = new Array(20).fill(0);
+    let live = null;
+    let nextTile = null;
+    let currentWatchedGame = null;
+    let ws = null;
+
+    function render() {
+      bctx.fillStyle = '#030712';
+      bctx.fillRect(0, 0, 240, 480);
+
+      // Grid lines
+      bctx.strokeStyle = '#1e293b';
+      bctx.lineWidth = 1;
+      for (let x = 0; x <= 240; x += 24) {
+        bctx.beginPath(); bctx.moveTo(x, 0); bctx.lineTo(x, 480); bctx.stroke();
+      }
+      for (let y = 0; y <= 480; y += 24) {
+        bctx.beginPath(); bctx.moveTo(0, y); bctx.lineTo(240, y); bctx.stroke();
+      }
+
+      // Placed blocks
+      for (let r = 0; r < 20; r++) {
+        const rowVal = board[r];
+        for (let c = 0; c < 10; c++) {
+          const shift = 3 * (9 - c);
+          const shape = (rowVal >> shift) & 0b111;
+          if (shape > 0) {
+            drawBlock(bctx, c * 24, r * 24, COLORS[shape] || '#9ca3af');
+          }
+        }
+      }
+
+      // Live piece & Ghost
+      if (live) {
+        const [shape, orient, x, y, howfar] = live;
+        const blocks = TETROMINOS[shape] ? TETROMINOS[shape][orient] : [];
+
+        // Ghost piece
+        if (typeof howfar === 'number' && howfar > 0) {
+          bctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          for (const [dx, dy] of blocks) {
+            const gx = (x + dx) * 24;
+            const gy = (y + dy + howfar) * 24;
+            if (gy >= 0 && gy < 480 && gx >= 0 && gx < 240) {
+              bctx.fillRect(gx + 1, gy + 1, 22, 22);
+            }
+          }
+        }
+
+        // Active piece
+        for (const [dx, dy] of blocks) {
+          const px = (x + dx) * 24;
+          const py = (y + dy) * 24;
+          if (py >= 0 && py < 480 && px >= 0 && px < 240) {
+            drawBlock(bctx, px, py, COLORS[shape] || '#38bdf8');
+          }
+        }
+      }
+
+      // Next piece preview
+      nctx.fillStyle = '#111827';
+      nctx.fillRect(0, 0, 100, 100);
+      if (nextTile && TETROMINOS[nextTile]) {
+        const blocks = TETROMINOS[nextTile][0];
+        const color = COLORS[nextTile] || '#38bdf8';
+        for (const [dx, dy] of blocks) {
+          const nx = 40 + dx * 18;
+          const ny = 55 + dy * 18;
+          drawBlock(nctx, nx, ny, color, 18);
+        }
+      }
+    }
+
+    function drawBlock(ctx, x, y, color, size = 24) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.fillRect(x + 1, y + 1, size - 2, 3);
+      ctx.fillRect(x + 1, y + 1, 3, size - 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(x + 1, y + size - 4, size - 2, 3);
+      ctx.fillRect(x + size - 4, y + 1, 3, size - 2);
+    }
+
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${proto}//${location.host}/snoop`;
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        statusEl.textContent = 'Polling for games...';
+        statusEl.className = 'status-badge waiting';
+        ws.send('?');
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+
+          if (data.alive) {
+            if (data.alive.length > 0) {
+              const targetGame = data.alive[0];
+              if (targetGame !== currentWatchedGame) {
+                currentWatchedGame = targetGame;
+                gameIdEl.textContent = targetGame;
+                statusEl.textContent = 'Spectating';
+                statusEl.className = 'status-badge live';
+                ws.send(String(targetGame));
+              }
+            } else {
+              currentWatchedGame = null;
+              gameIdEl.textContent = 'None';
+              statusEl.textContent = 'Waiting for bot/player...';
+              statusEl.className = 'status-badge waiting';
+            }
+          }
+
+          if (data.board) board = data.board;
+          if (data.live) live = data.live;
+          if (data.next) nextTile = data.next;
+          if (data.event === 'gameover') {
+            statusEl.textContent = 'Game Over';
+            statusEl.className = 'status-badge waiting';
+            setTimeout(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.send('?'); }, 1000);
+          }
+
+          render();
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      ws.onclose = () => {
+        statusEl.textContent = 'Disconnected (reconnecting...)';
+        statusEl.className = 'status-badge waiting';
+        currentWatchedGame = null;
+        setTimeout(connect, 2000);
+      };
+    }
+
+    setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN && !currentWatchedGame) {
+        ws.send('?');
+      }
+    }, 1500);
+
+    connect();
+    render();
+  </script>
+</body>
+</html>
