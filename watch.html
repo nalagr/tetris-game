@@ -6,6 +6,9 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: monospace; }
     body { background: #111827; color: #f3f4f6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    nav { display: flex; gap: 16px; margin-bottom: 16px; font-size: 13px; }
+    nav a { color: #94a3b8; text-decoration: none; padding: 5px 12px; border-radius: 4px; background: #1e293b; transition: all 0.2s; }
+    nav a:hover, nav a.active { background: #0284c7; color: #ffffff; }
     h1 { margin-bottom: 8px; color: #38bdf8; font-size: 24px; }
     .status-bar { margin-bottom: 16px; font-size: 14px; color: #9ca3af; display: flex; gap: 16px; align-items: center; }
     .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; background: #374151; }
@@ -13,12 +16,19 @@
     .status-badge.waiting { background: #b45309; color: #fffbeb; }
     .container { display: flex; gap: 24px; background: #1f2937; padding: 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
     canvas { background: #030712; border: 2px solid #374151; border-radius: 4px; }
-    .sidebar { display: flex; flex-direction: column; gap: 16px; width: 140px; }
-    .box { background: #111827; border: 1px solid #374151; border-radius: 4px; padding: 12px; text-align: center; }
-    .box-title { font-size: 12px; color: #9ca3af; margin-bottom: 8px; text-transform: uppercase; }
+    .sidebar { display: flex; flex-direction: column; gap: 14px; width: 140px; }
+    .box { background: #111827; border: 1px solid #374151; border-radius: 4px; padding: 10px; text-align: center; }
+    .box-title { font-size: 11px; color: #9ca3af; margin-bottom: 6px; text-transform: uppercase; }
+    .stat-val { font-size: 18px; font-weight: bold; color: #38bdf8; }
   </style>
 </head>
 <body>
+  <nav>
+    <a href="/">Solo Play</a>
+    <a href="/vs">⚔️ Play vs Computer</a>
+    <a href="/watch" class="active">Spectator</a>
+  </nav>
+
   <h1>Tetris Spectator (/watch)</h1>
   <div class="status-bar">
     <span>Status: <span id="status" class="status-badge waiting">Connecting...</span></span>
@@ -31,6 +41,14 @@
       <div class="box">
         <div class="box-title">Next</div>
         <canvas id="next" width="100" height="100"></canvas>
+      </div>
+      <div class="box">
+        <div class="box-title">Lines</div>
+        <div class="stat-val" id="lines">0</div>
+      </div>
+      <div class="box">
+        <div class="box-title">Score</div>
+        <div class="stat-val" id="score">0</div>
       </div>
       <div class="box">
         <div class="box-title">Controls</div>
@@ -53,13 +71,13 @@
     };
 
     const COLORS = {
-      1: '#eab308', // O yellow
-      2: '#06b6d4', // I cyan
-      3: '#a855f7', // T purple
-      4: '#f97316', // L orange
-      5: '#3b82f6', // J blue
-      6: '#22c55e', // S green
-      7: '#ef4444'  // Z red
+      1: '#eab308',
+      2: '#06b6d4',
+      3: '#a855f7',
+      4: '#f97316',
+      5: '#3b82f6',
+      6: '#22c55e',
+      7: '#ef4444'
     };
 
     const boardCanvas = document.getElementById('board');
@@ -68,6 +86,8 @@
     const nctx = nextCanvas.getContext('2d');
     const statusEl = document.getElementById('status');
     const gameIdEl = document.getElementById('game-id');
+    const linesEl = document.getElementById('lines');
+    const scoreEl = document.getElementById('score');
 
     let board = new Array(20).fill(0);
     let live = null;
@@ -79,7 +99,6 @@
       bctx.fillStyle = '#030712';
       bctx.fillRect(0, 0, 240, 480);
 
-      // Grid lines
       bctx.strokeStyle = '#1e293b';
       bctx.lineWidth = 1;
       for (let x = 0; x <= 240; x += 24) {
@@ -89,7 +108,6 @@
         bctx.beginPath(); bctx.moveTo(0, y); bctx.lineTo(240, y); bctx.stroke();
       }
 
-      // Placed blocks
       for (let r = 0; r < 20; r++) {
         const rowVal = board[r];
         for (let c = 0; c < 10; c++) {
@@ -101,12 +119,10 @@
         }
       }
 
-      // Live piece & Ghost
       if (live) {
         const [shape, orient, x, y, howfar] = live;
         const blocks = TETROMINOS[shape] ? TETROMINOS[shape][orient] : [];
 
-        // Ghost piece
         if (typeof howfar === 'number' && howfar > 0) {
           bctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
           for (const [dx, dy] of blocks) {
@@ -118,7 +134,6 @@
           }
         }
 
-        // Active piece
         for (const [dx, dy] of blocks) {
           const px = (x + dx) * 24;
           const py = (y + dy) * 24;
@@ -128,7 +143,6 @@
         }
       }
 
-      // Next piece preview
       nctx.fillStyle = '#111827';
       nctx.fillRect(0, 0, 100, 100);
       if (nextTile && TETROMINOS[nextTile]) {
@@ -159,9 +173,9 @@
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        statusEl.textContent = 'Polling for games...';
+        statusEl.textContent = 'Connected (Discovering...)';
         statusEl.className = 'status-badge waiting';
-        ws.send('?');
+        pollAlive();
       };
 
       ws.onmessage = (evt) => {
@@ -169,32 +183,33 @@
           const data = JSON.parse(evt.data);
 
           if (data.alive) {
-            if (data.alive.length > 0) {
-              const targetGame = data.alive[0];
-              if (targetGame !== currentWatchedGame) {
-                currentWatchedGame = targetGame;
-                gameIdEl.textContent = targetGame;
+            const games = data.alive;
+            if (games.length > 0) {
+              if (!currentWatchedGame || !games.includes(currentWatchedGame)) {
+                currentWatchedGame = games[0];
+                ws.send(currentWatchedGame.toString());
                 statusEl.textContent = 'Spectating';
                 statusEl.className = 'status-badge live';
-                ws.send(String(targetGame));
+                gameIdEl.textContent = currentWatchedGame;
               }
             } else {
               currentWatchedGame = null;
-              gameIdEl.textContent = 'None';
-              statusEl.textContent = 'Waiting for bot/player...';
+              statusEl.textContent = 'No Active Games';
               statusEl.className = 'status-badge waiting';
+              gameIdEl.textContent = 'None';
             }
+            return;
           }
 
           if (data.board) board = data.board;
           if (data.live) live = data.live;
           if (data.next) nextTile = data.next;
+          if (data.lines !== undefined) linesEl.textContent = data.lines;
+          if (data.score !== undefined) scoreEl.textContent = data.score;
           if (data.event === 'gameover') {
             statusEl.textContent = 'Game Over';
             statusEl.className = 'status-badge waiting';
-            setTimeout(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.send('?'); }, 1000);
           }
-
           render();
         } catch (e) {
           console.error(e);
@@ -202,18 +217,19 @@
       };
 
       ws.onclose = () => {
-        statusEl.textContent = 'Disconnected (reconnecting...)';
+        statusEl.textContent = 'Disconnected';
         statusEl.className = 'status-badge waiting';
-        currentWatchedGame = null;
+        gameIdEl.textContent = 'None';
         setTimeout(connect, 2000);
       };
     }
 
-    setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN && !currentWatchedGame) {
+    function pollAlive() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send('?');
       }
-    }, 1500);
+      setTimeout(pollAlive, 1500);
+    }
 
     connect();
     render();

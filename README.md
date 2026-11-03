@@ -2,28 +2,27 @@
 
 An asynchronous Tetris game server and heuristic bot player built with Python, `aiohttp`, and `asyncio`. 
 
-Supports real-time browser play over WebSockets, live spectator streaming, and an automated bot that evaluates board placements and simulates human input timing.
+Supports real-time browser play over WebSockets, live spectator streaming, side-by-side **Player vs Computer** battle mode, and a multi-difficulty heuristic bot.
 
 ---
 
-## How It Works
+## Features
 
-### 1. Board & Engine (`tetris.py`)
-- **Bitmask Board Representation**: The 20-row $\times$ 10-column board is stored as a list of 20 integers. Each column occupies 3 bits (`0b111`), encoding the tetromino color/shape ID (1–7).
-- **Collision & Movement**: Fast bitwise operations handle boundary checks and collisions (`valid_board`). Includes wall kicks during piece rotation and automatic gravity via `asyncio`.
+### 1. Difficulty Levels
+- **Easy**: Beginner level. Slower reactions (160–240ms delay), 15% random blunder rate, ignores bumpiness and blockades, shallow hole penalty.
+- **Medium**: Intermediate level. Human-paced moves (60–100ms delay), balanced heuristic penalizing column height, holes, and bumpiness (0-ply greedy).
+- **Hard**: Master level. Pierre Dellacherie / genetic weights with full 1-ply lookahead over the upcoming piece (`next`), bumpiness minimization, blockade tracking, emergency height dampening, and rapid execution.
+
+### 2. Player vs Computer Mode (`/vs`)
+- Side-by-side split-screen arena in the browser.
+- Select bot difficulty on the fly (`Easy`, `Medium`, `Hard`).
+- Real-time opponent streaming via `/snoop`.
+- Live score, lines cleared, next piece preview, and automated winner/loser detection.
+
+### 3. Board & Engine (`tetris.py`)
+- **Bitmask Board Representation**: 20 rows $\times$ 10 columns stored as 20 integers (3 bits per cell).
+- **Collision & Movement**: Fast bitwise operations for boundary checks and collisions (`valid_board`). Includes wall kicks during piece rotation and automatic gravity via `asyncio`.
 - **Row Clearing**: Scans rows after piece placement, removes completed lines, shifts board down, and pads top rows.
-
-### 2. Spectator & WebSockets
-- `/ws`: WebSocket endpoint for active gameplay. Accepts actions (`left`, `right`, `cw`, `ccw`, `down`, `drop`) and broadcasts state updates (`board`, `live`, `next`).
-- `/snoop`: Multiplexed WebSocket stream that allows spectator clients (`/watch`) to observe any running game ID without interrupting the player.
-
-### 3. Heuristic Bot (`bot.py`)
-For every spawned piece, the bot tests all possible rotations and column drop positions:
-- **Depth score**: Prefers placements lower on the board to keep the stack low.
-- **Line clear bonus**: Weighted rewards for clears (+30 for single, +80 double, +150 triple, +300 tetris).
-- **Hole penalty**: Heavily penalizes placing blocks over empty cells.
-- **Lookahead**: 1-ply lookahead evaluating the best possible drop depth for the upcoming piece.
-- **Human simulation**: Adds small randomized delays (140ms–180ms) between rotations and shifts to avoid instantaneous execution.
 
 ---
 
@@ -31,12 +30,13 @@ For every spawned piece, the bot tests all possible rotations and column drop po
 
 ```
 tetris-game/
-├── tetris.py         # Authoritative game server & WebSocket routes
-├── bot.py            # Heuristic bot solver & client logic
+├── tetris.py         # Game server, WebSocket routes (/ws, /snoop), and bot manager
+├── bot.py            # Heuristic bot solver (Easy, Medium, Hard)
 ├── tilestub.py       # Tetromino generator
-├── play.py           # Unified launcher (starts server + bot + browser)
+├── play.py           # Unified launcher (Solo, Bot Autoplay, Versus)
 ├── play.bat          # Windows batch shortcut for single-command run
-├── index.html        # Playable browser UI
+├── vs.html           # Player vs Computer split-screen arena
+├── index.html        # Playable solo browser UI
 ├── watch.html        # Live spectator UI
 └── botui.html        # Standalone bot controller interface
 ```
@@ -69,19 +69,20 @@ pip install aiohttp
 
 ## Usage
 
-### One-Command Auto Play
-Starts the server, connects the bot, and automatically opens the live spectator board in your browser:
+### ⚔️ Play Against the Computer (Versus Mode)
+Launch the split-screen battle arena directly in your browser:
 
 ```bash
-# Windows cmd/powershell
-play
+# Windows shortcut
+play.bat --vs
 
-# or directly with python
-python play.py
+# or using python
+python play.py --vs --difficulty medium
 ```
+You can switch difficulties (`Easy`, `Medium`, `Hard`) and rematch directly in the UI.
 
-### Manual Play Mode
-To play the game yourself in the browser with arrow keys:
+### 🎮 Solo Play Mode
+Play single-player with arrow keys:
 
 ```bash
 python play.py --manual
@@ -94,16 +95,13 @@ Controls:
 - `Down`: Soft drop
 - `Space`: Hard drop
 
-### Running Components Individually
-You can also run the server and bot as separate services:
+### 👁️ Bot Autoplay / Spectator Mode
+Watch the bot play automatically:
 
 ```bash
-# Terminal 1: Game server
-python tetris.py --host 127.0.0.1 -p 10340
+# Default hard difficulty
+python play.py
 
-# Terminal 2: Bot controller (port 41801)
-python bot.py
-
-# Terminal 3: Trigger bot connection
-curl -X POST -d "ws://127.0.0.1:10340/ws" http://127.0.0.1:41801/server
+# Or specify difficulty
+python play.py --difficulty easy
 ```

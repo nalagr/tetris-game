@@ -16,6 +16,17 @@ async def main():
         action="store_true",
         help="Open playable manual interface instead of bot spectator",
     )
+    parser.add_argument(
+        "--vs",
+        action="store_true",
+        help="Launch Player vs Computer battle arena",
+    )
+    parser.add_argument(
+        "--difficulty",
+        choices=["easy", "medium", "hard"],
+        default="medium",
+        help="Bot difficulty level (easy, medium, hard)",
+    )
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     parser.add_argument("-p", "--port", type=int, default=10340, help="Port to bind to")
     parser.add_argument(
@@ -37,13 +48,19 @@ async def main():
 
     # 2. Open browser
     if not args.no_browser:
-        target_page = base_url if args.manual else f"{base_url}/watch"
+        if args.vs:
+            target_page = f"{base_url}/vs?difficulty={args.difficulty}"
+        elif args.manual:
+            target_page = base_url
+        else:
+            target_page = f"{base_url}/watch"
         print(f"[Browser] Launching {target_page}")
         webbrowser.open(target_page)
 
-    # 3. Handle manual vs bot
-    if args.manual:
-        print("[Mode] Manual mode. Play in your browser with arrow keys!")
+    # 3. Handle manual / vs / bot
+    if args.manual or args.vs:
+        mode_label = "Versus Computer" if args.vs else "Solo Manual"
+        print(f"[Mode] {mode_label} mode active.")
         print("Press Ctrl+C to stop.")
         try:
             while True:
@@ -53,11 +70,11 @@ async def main():
         finally:
             await runner.cleanup()
     else:
-        print("[Mode] Bot autoplay mode. Bot is connecting...")
+        print(f"[Mode] Bot autoplay mode [Difficulty: {args.difficulty}]. Bot is connecting...")
         print("Press Ctrl+C to stop.")
         async with aiohttp.ClientSession() as client:
             ws_target = f"ws://{args.host}:{args.port}/ws"
-            bot_task = asyncio.create_task(bot.play_games(client, ws_target))
+            bot_task = asyncio.create_task(bot.play_games(client, ws_target, difficulty=args.difficulty))
             try:
                 await bot_task
             except asyncio.CancelledError:

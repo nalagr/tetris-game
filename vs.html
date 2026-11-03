@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tetris: Player vs Computer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: monospace; }
+    body {
+      background: #0b0f19;
+      color: #f3f4f6;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 16px 20px;
+    }
+    nav {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    nav a {
+      color: #94a3b8;
+      text-decoration: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: #1e293b;
+      transition: all 0.2s;
+    }
+    nav a:hover, nav a.active {
+      background: #0284c7;
+      color: #ffffff;
+    }
+    .header-box {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    h1 {
+      color: #38bdf8;
+      font-size: 24px;
+      margin-bottom: 6px;
+    }
+    .controls-panel {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: center;
+      background: #111827;
+      border: 1px solid #1f2937;
+      padding: 8px 16px;
+      border-radius: 8px;
+      margin-top: 6px;
+    }
+    .diff-btn {
+      background: #1f2937;
+      color: #94a3b8;
+      border: 1px solid #374151;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s ease;
+    }
+    .diff-btn:hover { background: #374151; color: #f3f4f6; }
+    .diff-btn.active[data-diff="easy"] { background: #15803d; color: #f0fdf4; border-color: #22c55e; }
+    .diff-btn.active[data-diff="medium"] { background: #d97706; color: #fffbeb; border-color: #f59e0b; }
+    .diff-btn.active[data-diff="hard"] { background: #b91c1c; color: #fef2f2; border-color: #ef4444; }
+    .action-btn {
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      padding: 7px 18px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .action-btn:hover { background: #0369a1; }
+    .banner {
+      font-size: 15px;
+      font-weight: bold;
+      padding: 6px 16px;
+      border-radius: 6px;
+      margin-top: 10px;
+      display: inline-block;
+    }
+    .banner.ready { background: #1e293b; color: #cbd5e1; }
+    .banner.playing { background: #075985; color: #e0f2fe; }
+    .banner.win { background: #166534; color: #dcfce7; border: 1px solid #22c55e; }
+    .banner.loss { background: #991b1b; color: #fee2e2; border: 1px solid #ef4444; }
+
+    .arena {
+      display: flex;
+      gap: 32px;
+      align-items: flex-start;
+      margin-top: 8px;
+    }
+    .player-card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      padding: 16px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      justify-content: space-between;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .badge.green { background: #059669; color: #ecfdf5; }
+    .badge.gray { background: #374151; color: #9ca3af; }
+    .badge.red { background: #dc2626; color: #fef2f2; }
+    .badge.yellow { background: #d97706; color: #fffbeb; }
+
+    .board-wrapper {
+      display: flex;
+      gap: 16px;
+    }
+    canvas.board {
+      background: #030712;
+      border: 2px solid #374151;
+      border-radius: 4px;
+    }
+    .side-col {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 120px;
+    }
+    .box {
+      background: #030712;
+      border: 1px solid #1f2937;
+      border-radius: 4px;
+      padding: 10px;
+      text-align: center;
+    }
+    .box-title {
+      font-size: 11px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .stat-val {
+      font-size: 18px;
+      font-weight: bold;
+      color: #38bdf8;
+    }
+    .key-guide {
+      font-size: 10px;
+      color: #9ca3af;
+      line-height: 1.6;
+      text-align: left;
+    }
+    .key {
+      background: #374151;
+      color: #f3f4f6;
+      padding: 1px 3px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/">Solo Play</a>
+    <a href="/vs" class="active">⚔️ Play vs Computer</a>
+    <a href="/watch">Spectator</a>
+  </nav>
+
+  <div class="header-box">
+    <h1>⚔️ Tetris: Player vs Computer</h1>
+    <div class="controls-panel">
+      <span>Bot Difficulty:</span>
+      <button class="diff-btn" data-diff="easy" onclick="setDifficulty('easy')">Easy</button>
+      <button class="diff-btn active" data-diff="medium" onclick="setDifficulty('medium')">Medium</button>
+      <button class="diff-btn" data-diff="hard" onclick="setDifficulty('hard')">Hard</button>
+      <button class="action-btn" id="match-btn" onclick="startMatch()">Start Match</button>
+    </div>
+    <div class="banner ready" id="match-banner">Select difficulty and click Start Match!</div>
+  </div>
+
+  <div class="arena">
+    <!-- Player Panel -->
+    <div class="player-card">
+      <div class="card-title">
+        <span style="color:#38bdf8;">👤 YOU (Player)</span>
+        <span id="player-badge" class="badge gray">Waiting</span>
+      </div>
+      <div class="board-wrapper">
+        <canvas id="p-board" class="board" width="240" height="480"></canvas>
+        <div class="side-col">
+          <div class="box">
+            <div class="box-title">Next</div>
+            <canvas id="p-next" width="100" height="100"></canvas>
+          </div>
+          <div class="box">
+            <div class="box-title">Lines</div>
+            <div class="stat-val" id="p-lines">0</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Score</div>
+            <div class="stat-val" id="p-score">0</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Controls</div>
+            <div class="key-guide">
+              <div><span class="key">&larr;</span> / <span class="key">&rarr;</span> Move</div>
+              <div><span class="key">&uarr;</span> / <span class="key">X</span> CW</div>
+              <div><span class="key">Z</span> CCW</div>
+              <div><span class="key">&darr;</span> Soft</div>
+              <div><span class="key">Space</span> Drop</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Computer Bot Panel -->
+    <div class="player-card">
+      <div class="card-title">
+        <span style="color:#f43f5e;">🤖 COMPUTER (Bot)</span>
+        <span id="bot-badge" class="badge gray">Waiting</span>
+      </div>
+      <div class="board-wrapper">
+        <canvas id="b-board" class="board" width="240" height="480"></canvas>
+        <div class="side-col">
+          <div class="box">
+            <div class="box-title">Next</div>
+            <canvas id="b-next" width="100" height="100"></canvas>
+          </div>
+          <div class="box">
+            <div class="box-title">Lines</div>
+            <div class="stat-val" id="b-lines">0</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Score</div>
+            <div class="stat-val" id="b-score">0</div>
+          </div>
+          <div class="box">
+            <div class="box-title">AI Profile</div>
+            <div id="ai-profile-info" style="font-size:10px; color:#9ca3af; line-height: 1.4;">
+              Intermediate heuristic & casual human speed
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TETROMINOS = {
+      1: {0: [[0,0],[1,0],[0,-1],[1,-1]]},
+      2: {0: [[0,0],[0,-1],[0,-2],[0,-3]], 1: [[-1,0],[0,0],[1,0],[2,0]]},
+      3: {0: [[-1,-1],[0,-1],[1,-1],[0,0]], 1: [[-1,-1],[0,-1],[0,-2],[0,0]], 2: [[-1,0],[0,0],[1,0],[0,-1]], 3: [[0,0],[0,-1],[0,-2],[1,-1]]},
+      4: {0: [[0,-2],[0,-1],[0,0],[1,0]], 1: [[0,0],[0,-1],[1,-1],[2,-1]], 2: [[-1,-2],[0,-2],[0,-1],[0,0]], 3: [[-1,0],[0,0],[1,0],[1,-1]]},
+      5: {0: [[-1,0],[0,0],[0,-1],[0,-2]], 1: [[0,-1],[0,0],[1,0],[2,0]], 2: [[0,0],[0,-1],[0,-2],[1,-2]], 3: [[-1,-1],[0,-1],[1,-1],[1,0]]},
+      6: {0: [[0,-2],[0,-1],[1,-1],[1,0]], 1: [[-1,0],[0,0],[0,-1],[1,-1]]},
+      7: {0: [[1,-2],[1,-1],[0,-1],[0,0]], 1: [[-1,-1],[0,-1],[0,0],[1,0]]}
+    };
+
+    const COLORS = {
+      1: '#eab308',
+      2: '#06b6d4',
+      3: '#a855f7',
+      4: '#f97316',
+      5: '#3b82f6',
+      6: '#22c55e',
+      7: '#ef4444'
+    };
+
+    const AI_INFOS = {
+      easy: "Slow reaction, high blunder chance, ignores holes & bumpiness",
+      medium: "Intermediate heuristic with height & holes awareness, human pace",
+      hard: "Pierre Dellacherie master AI, 1-ply lookahead, fast execution"
+    };
+
+    let selectedDifficulty = 'medium';
+    let playerWs = null;
+    let botSnoopWs = null;
+    let matchActive = false;
+    let playerGameOver = false;
+    let botGameOver = false;
+
+    // Player Board State
+    let pBoard = new Array(20).fill(0);
+    let pLive = null;
+    let pNext = null;
+
+    // Bot Board State
+    let bBoard = new Array(20).fill(0);
+    let bLive = null;
+    let bNext = null;
+
+    const pCanvas = document.getElementById('p-board');
+    const pCtx = pCanvas.getContext('2d');
+    const pNextCanvas = document.getElementById('p-next');
+    const pNextCtx = pNextCanvas.getContext('2d');
+
+    const bCanvas = document.getElementById('b-board');
+    const bCtx = bCanvas.getContext('2d');
+    const bNextCanvas = document.getElementById('b-next');
+    const bNextCtx = bNextCanvas.getContext('2d');
+
+    const bannerEl = document.getElementById('match-banner');
+    const matchBtn = document.getElementById('match-btn');
+    const playerBadge = document.getElementById('player-badge');
+    const botBadge = document.getElementById('bot-badge');
+
+    function setDifficulty(diff) {
+      if (matchActive) return;
+      selectedDifficulty = diff;
+      document.querySelectorAll('.diff-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.diff === diff);
+      });
+      document.getElementById('ai-profile-info').textContent = AI_INFOS[diff] || '';
+    }
+
+    // Check URL parameters for difficulty on load
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('difficulty')) {
+      const d = urlParams.get('difficulty').toLowerCase();
+      if (['easy', 'medium', 'hard'].includes(d)) {
+        setDifficulty(d);
+      }
+    }
+
+    function renderBoard(ctx, board, live) {
+      ctx.fillStyle = '#030712';
+      ctx.fillRect(0, 0, 240, 480);
+
+      // Grid
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= 240; x += 24) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 480); ctx.stroke();
+      }
+      for (let y = 0; y <= 480; y += 24) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(240, y); ctx.stroke();
+      }
+
+      // Placed
+      for (let r = 0; r < 20; r++) {
+        const rowVal = board[r];
+        for (let c = 0; c < 10; c++) {
+          const shift = 3 * (9 - c);
+          const shape = (rowVal >> shift) & 0b111;
+          if (shape > 0) {
+            drawBlock(ctx, c * 24, r * 24, COLORS[shape] || '#9ca3af');
+          }
+        }
+      }
+
+      // Live Piece
+      if (live) {
+        const [shape, orient, x, y, howfar] = live;
+        const blocks = TETROMINOS[shape] ? TETROMINOS[shape][orient] : [];
+
+        // Ghost piece
+        if (typeof howfar === 'number' && howfar > 0) {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          for (const [dx, dy] of blocks) {
+            const gx = (x + dx) * 24;
+            const gy = (y + dy + howfar) * 24;
+            if (gy >= 0 && gy < 480 && gx >= 0 && gx < 240) {
+              ctx.fillRect(gx + 1, gy + 1, 22, 22);
+            }
+          }
+        }
+
+        for (const [dx, dy] of blocks) {
+          const px = (x + dx) * 24;
+          const py = (y + dy) * 24;
+          if (py >= 0 && py < 480 && px >= 0 && px < 240) {
+            drawBlock(ctx, px, py, COLORS[shape] || '#38bdf8');
+          }
+        }
+      }
+    }
+
+    function renderNext(ctx, nextTile) {
+      ctx.fillStyle = '#030712';
+      ctx.fillRect(0, 0, 100, 100);
+      if (nextTile && TETROMINOS[nextTile]) {
+        const blocks = TETROMINOS[nextTile][0];
+        const color = COLORS[nextTile] || '#38bdf8';
+        for (const [dx, dy] of blocks) {
+          const nx = 40 + dx * 18;
+          const ny = 55 + dy * 18;
+          drawBlock(ctx, nx, ny, color, 18);
+        }
+      }
+    }
+
+    function drawBlock(ctx, x, y, color, size = 24) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.fillRect(x + 1, y + 1, size - 2, 3);
+      ctx.fillRect(x + 1, y + 1, 3, size - 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(x + 1, y + size - 4, size - 2, 3);
+      ctx.fillRect(x + size - 4, y + 1, 3, size - 2);
+    }
+
+    async function startMatch() {
+      // Clean up previous connections
+      if (playerWs) { playerWs.close(); playerWs = null; }
+      if (botSnoopWs) { botSnoopWs.close(); botSnoopWs = null; }
+
+      // Reset states
+      pBoard = new Array(20).fill(0);
+      pLive = null;
+      pNext = null;
+      bBoard = new Array(20).fill(0);
+      bLive = null;
+      bNext = null;
+      playerGameOver = false;
+      botGameOver = false;
+
+      document.getElementById('p-lines').textContent = '0';
+      document.getElementById('p-score').textContent = '0';
+      document.getElementById('b-lines').textContent = '0';
+      document.getElementById('b-score').textContent = '0';
+
+      renderBoard(pCtx, pBoard, pLive);
+      renderNext(pNextCtx, pNext);
+      renderBoard(bCtx, bBoard, bLive);
+      renderNext(bNextCtx, bNext);
+
+      matchActive = true;
+      matchBtn.textContent = 'Restart Match';
+      bannerEl.className = 'banner playing';
+      bannerEl.textContent = `Match in progress vs ${selectedDifficulty.toUpperCase()} Bot!`;
+      playerBadge.className = 'badge green';
+      playerBadge.textContent = 'Playing';
+      botBadge.className = 'badge yellow';
+      botBadge.textContent = 'Connecting...';
+
+      // 1. Connect player WebSocket
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const playerWsUrl = `${proto}//${location.host}/ws`;
+      playerWs = new WebSocket(playerWsUrl);
+
+      playerWs.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.board) pBoard = data.board;
+          if (data.live) pLive = data.live;
+          if (data.next) pNext = data.next;
+          if (data.lines !== undefined) document.getElementById('p-lines').textContent = data.lines;
+          if (data.score !== undefined) document.getElementById('p-score').textContent = data.score;
+          if (data.event === 'gameover') {
+            playerGameOver = true;
+            playerBadge.className = 'badge red';
+            playerBadge.textContent = 'Game Over';
+            checkMatchResult();
+          }
+          renderBoard(pCtx, pBoard, pLive);
+          renderNext(pNextCtx, pNext);
+        } catch (e) { console.error(e); }
+      };
+
+      // 2. Request backend to spawn bot
+      try {
+        const resp = await fetch('/api/bot/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ difficulty: selectedDifficulty })
+        });
+        const resData = await resp.json();
+        if (resData.status !== 'ok') {
+          bannerEl.textContent = 'Error starting bot: ' + (resData.message || 'unknown');
+          return;
+        }
+
+        const botGameId = resData.bot_game_id;
+        botBadge.className = 'badge green';
+        botBadge.textContent = `Playing (${selectedDifficulty.toUpperCase()})`;
+
+        // 3. Connect Spectator to observe bot game
+        const snoopUrl = `${proto}//${location.host}/snoop`;
+        botSnoopWs = new WebSocket(snoopUrl);
+
+        botSnoopWs.onopen = () => {
+          botSnoopWs.send(botGameId.toString());
+        };
+
+        botSnoopWs.onmessage = (evt) => {
+          try {
+            const data = JSON.parse(evt.data);
+            if (data.board) bBoard = data.board;
+            if (data.live) bLive = data.live;
+            if (data.next) bNext = data.next;
+            if (data.lines !== undefined) document.getElementById('b-lines').textContent = data.lines;
+            if (data.score !== undefined) document.getElementById('b-score').textContent = data.score;
+            if (data.event === 'gameover') {
+              botGameOver = true;
+              botBadge.className = 'badge red';
+              botBadge.textContent = 'Game Over';
+              checkMatchResult();
+            }
+            renderBoard(bCtx, bBoard, bLive);
+            renderNext(bNextCtx, bNext);
+          } catch (e) { console.error(e); }
+        };
+      } catch (err) {
+        bannerEl.textContent = 'Failed to connect bot: ' + err;
+      }
+    }
+
+    function checkMatchResult() {
+      if (!matchActive) return;
+
+      if (playerGameOver && botGameOver) {
+        matchActive = false;
+        bannerEl.className = 'banner ready';
+        bannerEl.textContent = 'Tie Game! Both topped out.';
+      } else if (playerGameOver && !botGameOver) {
+        matchActive = false;
+        bannerEl.className = 'banner loss';
+        bannerEl.textContent = '🤖 BOT WINS! You topped out.';
+      } else if (botGameOver && !playerGameOver) {
+        matchActive = false;
+        bannerEl.className = 'banner win';
+        bannerEl.textContent = '🏆 YOU WIN! The bot topped out!';
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (!playerWs || playerWs.readyState !== WebSocket.OPEN || playerGameOver) return;
+      if (e.key === 'ArrowLeft') { playerWs.send('left'); e.preventDefault(); }
+      else if (e.key === 'ArrowRight') { playerWs.send('right'); e.preventDefault(); }
+      else if (e.key === 'ArrowUp' || e.key === 'x' || e.key === 'X') { playerWs.send('cw'); e.preventDefault(); }
+      else if (e.key === 'z' || e.key === 'Z') { playerWs.send('ccw'); e.preventDefault(); }
+      else if (e.key === 'ArrowDown') { playerWs.send('down'); e.preventDefault(); }
+      else if (e.key === ' ' || e.code === 'Space') { playerWs.send('drop'); e.preventDefault(); }
+    });
+
+    renderBoard(pCtx, pBoard, pLive);
+    renderNext(pNextCtx, pNext);
+    renderBoard(bCtx, bBoard, bLive);
+    renderNext(bNextCtx, bNext);
+  </script>
+</body>
+</html>
